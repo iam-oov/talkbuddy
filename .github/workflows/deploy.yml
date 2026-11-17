@@ -1,0 +1,68 @@
+name: Deploy
+
+on:
+  workflow_run:
+    workflows: ["CI"]
+    types: [completed]
+    branches: [main]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    if: >-
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.event == 'push'
+
+    steps:
+      - name: Install cloudflared
+        run: |
+          curl -fsSL -o cloudflared.deb \
+            https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64.deb
+          sudo dpkg -i cloudflared.deb
+          cloudflared --version
+
+      - name: Configure SSH key
+        run: |
+          mkdir -p ~/.ssh
+          printf '%s\n' "${{ secrets.SERVER_SSH_KEY }}" > ~/.ssh/id_server
+          chmod 600 ~/.ssh/id_server
+
+      - name: Deploy through the tunnel
+        env:
+          TUNNEL_SERVICE_TOKEN_ID: ${{ secrets.CF_ACCESS_CLIENT_ID }}
+          TUNNEL_SERVICE_TOKEN_SECRET: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
+        run: |
+          ssh -i ~/.ssh/id_server \
+            -o StrictHostKeyChecking=accept-new \
+            -o "ProxyCommand=cloudflared access ssh --hostname %h" \
+            "${{ secrets.SERVER_SSH_USER }}@pi.valdoh.com" 'bash -s' <<'REMOTE'
+          set -euo pipefail
+          cd ~/talkbuddy
+          git fetch origin main
+          git reset --hard origin/main
+          cd backend
+          npm ci --omit=dev
+          sudo systemctl restart talkbuddy
+
+          PORT=$(grep -E '^PORT=' .env | cut -d= -f2)
+          EXPECTED=$(node -p "require('./package.json').version")
+          HEALTH=""
+          for _ in $(seq 1 30); do
+            HEALTH=$(curl -fs "http://127.0.0.1:${PORT}/health" || true)
+            echo "$HEALTH" | grep -q '"ok":true' && echo "$HEALTH" | grep -q "\"version\":\"${EXPECTED}\"" && break
+            HEALTH=""
+            sleep 5
+          done
+          if [ -z "$HEALTH" ]; then
+            echo "DEPLOY FAILED: /health never reported ok with version ${EXPECTED}"
+            journalctl -u talkbuddy -n 30 --no-pager
+            exit 1
+          fi
+
+          CODE=$(curl -s -o /dev/null -w '%{http_code}' "http://127.0.0.1:${PORT}/models")
+          if [ "$CODE" != "401" ]; then
+            echo "DEPLOY FAILED: /models answered ${CODE} without a token. Is APP_TOKEN set in backend/.env?"
+            exit 1
+          fi
+          echo "Deploy verified: talkbuddy ${EXPECTED} running on port ${PORT}"
+          REMOTE
