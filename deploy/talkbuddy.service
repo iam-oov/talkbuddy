@@ -1,0 +1,16 @@
+[Unit]
+Description=TalkBuddy voice practice backend
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=talkbuddy
+WorkingDirectory=/home/talkbuddy/talkbuddy/backend
+EnvironmentFile=/home/talkbuddy/talkbuddy/backend/.env
+ExecStart=/usr/bin/npm start
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
