@@ -3,13 +3,21 @@ import 'package:flutter/material.dart';
 import '../models.dart';
 
 /// Small, glanceable correction under a learner turn. Structure first, one pronunciation tip at most.
-class CorrectionCardView extends StatelessWidget {
+class CorrectionCardView extends StatefulWidget {
   const CorrectionCardView({super.key, required this.card});
 
   final CorrectionCard card;
 
   @override
+  State<CorrectionCardView> createState() => _CorrectionCardViewState();
+}
+
+class _CorrectionCardViewState extends State<CorrectionCardView> {
+  bool _showNatural = false;
+
+  @override
   Widget build(BuildContext context) {
+    final card = widget.card;
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
     final hasTip = card.pronunciationWord != null && card.pronunciationTip != null;
@@ -38,11 +46,9 @@ class CorrectionCardView extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          if (!card.wasFine) ...[
-            Text('More natural', style: theme.textTheme.labelSmall?.copyWith(color: scheme.primary)),
-            Text(card.naturalVersion, style: theme.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w600)),
-            for (final note in card.notes) ...[
-              const SizedBox(height: 8),
+          if (!card.wasFine)
+            for (final (index, note) in card.notes.indexed) ...[
+              if (index > 0) const SizedBox(height: 8),
               Text.rich(
                 TextSpan(children: [
                   TextSpan(
@@ -56,7 +62,6 @@ class CorrectionCardView extends StatelessWidget {
               ),
               Text(note.why, style: theme.textTheme.bodySmall?.copyWith(color: scheme.onSurfaceVariant)),
             ],
-          ],
           if (hasTip) ...[
             if (!card.wasFine) const SizedBox(height: 8),
             Row(
@@ -79,6 +84,38 @@ class CorrectionCardView extends StatelessWidget {
               ],
             ),
           ],
+          if (!card.wasFine) _naturalVersion(theme),
+        ],
+      ),
+    );
+  }
+
+  Widget _naturalVersion(ThemeData theme) {
+    final scheme = theme.colorScheme;
+    return Padding(
+      padding: const EdgeInsets.only(top: 4),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          IconButton(
+            tooltip: _showNatural ? 'Hide full sentence' : 'Show full sentence',
+            visualDensity: VisualDensity.compact,
+            iconSize: 18,
+            color: scheme.primary,
+            onPressed: () => setState(() => _showNatural = !_showNatural),
+            icon: Icon(_showNatural ? Icons.visibility : Icons.visibility_off),
+          ),
+          Expanded(
+            child: _showNatural
+                ? Text(
+                    widget.card.naturalVersion,
+                    style: theme.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w600),
+                  )
+                : Text(
+                    'Full sentence',
+                    style: theme.textTheme.labelSmall?.copyWith(color: scheme.onSurfaceVariant),
+                  ),
+          ),
         ],
       ),
     );

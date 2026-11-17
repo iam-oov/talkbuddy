@@ -40,7 +40,7 @@ void main() {
     expect(find.text('More natural'), findsNothing);
   });
 
-  testWidgets('a correction shows the natural version, the fix and the tip', (tester) async {
+  testWidgets('a correction hides the full sentence until the eye is tapped', (tester) async {
     await tester.pumpWidget(const MaterialApp(
       home: Scaffold(
         body: CorrectionCardView(
@@ -54,8 +54,14 @@ void main() {
         ),
       ),
     ));
-    expect(find.text('I went to the store yesterday.'), findsOneWidget);
+    expect(find.text('I went to the store yesterday.'), findsNothing);
     expect(find.textContaining('I went', findRichText: true), findsWidgets);
     expect(find.textContaining('thought', findRichText: true), findsOneWidget);
+
+    await tester.tap(find.byIcon(Icons.visibility_off));
+    await tester.pump();
+
+    expect(find.text('I went to the store yesterday.'), findsOneWidget);
+    expect(find.byIcon(Icons.visibility), findsOneWidget);
   });
 }

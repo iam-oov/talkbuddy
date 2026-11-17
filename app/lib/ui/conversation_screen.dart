@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 
 import '../models.dart';
 import '../session/session_controller.dart';
 import 'correction_card.dart';
+import 'model_picker.dart';
 
 class ConversationScreen extends StatefulWidget {
   const ConversationScreen({super.key});
@@ -19,7 +21,7 @@ class _ConversationScreenState extends State<ConversationScreen> {
   void initState() {
     super.initState();
     _session.addListener(_scrollToEnd);
-    _session.start();
+    _session.loadModels();
   }
 
   @override
@@ -43,15 +45,16 @@ class _ConversationScreenState extends State<ConversationScreen> {
         final scheme = Theme.of(context).colorScheme;
         return Scaffold(
           appBar: AppBar(
-            title: const Text('TalkBuddy'),
+            title: const _VersionTitle(),
             actions: [
               if (_session.lastLatencyMs != null)
                 Center(
-                  child: Padding(
-                    padding: const EdgeInsets.only(right: 16),
-                    child: Text('${_session.lastLatencyMs} ms', style: Theme.of(context).textTheme.labelSmall),
-                  ),
+                  child: Text('${_session.lastLatencyMs} ms', style: Theme.of(context).textTheme.labelSmall),
                 ),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 8),
+                child: ModelPicker(session: _session),
+              ),
             ],
           ),
           body: Column(
@@ -73,7 +76,9 @@ class _ConversationScreenState extends State<ConversationScreen> {
                       Padding(
                         padding: const EdgeInsets.only(top: 48),
                         child: Text(
-                          'Just start talking.\nPause as long as you need. Talk over me whenever you want.',
+                          _session.state == SessionState.offline
+                              ? 'Tap the call button to start.'
+                              : 'Just start talking.\nPause as long as you need. Talk over me whenever you want.',
                           textAlign: TextAlign.center,
                           style: TextStyle(color: scheme.onSurfaceVariant),
                         ),
@@ -145,7 +150,7 @@ class _StatusBar extends StatelessWidget {
     SessionState.listening: 'Listening',
     SessionState.thinking: 'Thinking…',
     SessionState.speaking: 'Speaking — talk to interrupt',
-    SessionState.offline: 'Offline',
+    SessionState.offline: 'Not in a call',
   };
 
   @override
@@ -168,10 +173,14 @@ class _StatusBar extends StatelessWidget {
                 ),
                 const SizedBox(width: 8),
                 Expanded(child: Text(_labels[session.state]!)),
-                FilledButton.tonal(
-                  onPressed: live && session.partial.isNotEmpty ? session.sendNow : null,
-                  child: const Text('Send now'),
-                ),
+                if (session.inCall) ...[
+                  FilledButton.tonal(
+                    onPressed: live && session.partial.isNotEmpty ? session.sendNow : null,
+                    child: const Text('Send now'),
+                  ),
+                  const SizedBox(width: 8),
+                ],
+                _CallButton(session: session),
               ],
             ),
             Row(
@@ -193,6 +202,45 @@ class _StatusBar extends StatelessWidget {
           ],
         ),
       ),
+    );
+  }
+}
+
+class _CallButton extends StatelessWidget {
+  const _CallButton({required this.session});
+
+  final SessionController session;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final inCall = session.inCall;
+    return IconButton.filled(
+      tooltip: inCall ? 'Hang up' : 'Start call',
+      onPressed: session.state == SessionState.connecting
+          ? null
+          : inCall
+              ? session.hangUp
+              : session.start,
+      style: IconButton.styleFrom(
+        backgroundColor: inCall ? scheme.error : scheme.primary,
+        foregroundColor: inCall ? scheme.onError : scheme.onPrimary,
+      ),
+      icon: Icon(inCall ? Icons.call_end : Icons.call),
+    );
+  }
+}
+
+class _VersionTitle extends StatelessWidget {
+  const _VersionTitle();
+
+  static final Future<PackageInfo> _info = PackageInfo.fromPlatform();
+
+  @override
+  Widget build(BuildContext context) {
+    return FutureBuilder<PackageInfo>(
+      future: _info,
+      builder: (context, snapshot) => Text(snapshot.hasData ? 'v${snapshot.data!.version}' : ''),
     );
   }
 }

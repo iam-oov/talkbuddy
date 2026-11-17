@@ -1,18 +1,22 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:flutter/foundation.dart';
+import 'package:web_socket_channel/io.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
 
 import '../audio/mic_stream.dart';
 import '../audio/speaker.dart';
 import '../models.dart';
 
-/// The phone reaches the Mac through `adb reverse tcp:8787 tcp:8787`.
 const backendUrl = String.fromEnvironment(
   'BACKEND_WS',
   defaultValue: 'ws://127.0.0.1:8787/session',
 );
+const backendToken = String.fromEnvironment('BACKEND_TOKEN');
+
+Map<String, String> get _authHeaders => backendToken.isEmpty ? {} : {'Authorization': 'Bearer $backendToken'};
 
 /// Owns the live conversation: microphone up, replies down, barge-in.
 class SessionController extends ChangeNotifier {
@@ -27,11 +31,46 @@ class SessionController extends ChangeNotifier {
   SessionState state = SessionState.offline;
   String partial = '';
   String? error;
-  int silenceMs = 2500;
+  int silenceMs = 2000;
   int? lastLatencyMs;
+  List<ModelOption> models = [];
+  String modelId = 'claude-sonnet-5-5';
+
+  bool get inCall => state != SessionState.offline;
+
+  ModelOption? get selectedModel => models.where((model) => model.id == modelId).firstOrNull;
+
+  Future<void> loadModels() async {
+    final client = HttpClient();
+    try {
+      final modelsUrl = Uri.parse(backendUrl.replaceFirst('ws', 'http')).replace(path: '/models');
+      final request = await client.getUrl(modelsUrl);
+      _authHeaders.forEach(request.headers.set);
+      final response = await request.close();
+      final body = await response.transform(utf8.decoder).join();
+      _applyModels((jsonDecode(body) as Map<String, dynamic>)['models'] as List<dynamic>);
+    } catch (_) {
+    } finally {
+      client.close();
+    }
+  }
+
+  void selectModel(String id) {
+    modelId = id;
+    _send({'type': 'set_model', 'model': id});
+    notifyListeners();
+  }
+
+  void _applyModels(List<dynamic> raw) {
+    models = [for (final entry in raw) ModelOption.fromJson(entry as Map<String, dynamic>)];
+    notifyListeners();
+  }
 
   Future<void> start() async {
     error = null;
+    turns.clear();
+    partial = '';
+    lastLatencyMs = null;
     _setState(SessionState.connecting);
     if (!await _mic.hasPermission()) {
       _fail('Microphone permission is needed to talk.');
@@ -40,17 +79,28 @@ class SessionController extends ChangeNotifier {
     await _speaker.init();
     _speaker.onIdle = _onSpeechFinished;
     try {
-      final channel = WebSocketChannel.connect(Uri.parse(backendUrl));
+      final WebSocketChannel channel = IOWebSocketChannel.connect(Uri.parse(backendUrl), headers: _authHeaders);
       await channel.ready;
       _channel = channel;
       channel.stream.listen(
         _onMessage,
-        onDone: () => _fail(error ?? 'Connection to the backend closed.'),
-        onError: (Object e) => _fail('Connection error: $e'),
+        onDone: () {
+          if (_channel == channel) _fail(error ?? 'Connection to the backend closed.');
+        },
+        onError: (Object e) {
+          if (_channel == channel) _fail('Connection error: $e');
+        },
       );
     } catch (e) {
       _fail('Cannot reach the backend at $backendUrl. Is it running, and did you run adb reverse?');
     }
+  }
+
+  Future<void> hangUp() async {
+    error = null;
+    partial = '';
+    await _teardown();
+    _setState(SessionState.offline);
   }
 
   void sendNow() => _send({'type': 'send_now'});
@@ -62,11 +112,13 @@ class SessionController extends ChangeNotifier {
   }
 
   Future<void> _onMessage(dynamic raw) async {
-    if (raw is! String) return;
+    if (raw is! String || _channel == null) return;
     final msg = jsonDecode(raw) as Map<String, dynamic>;
     switch (msg['type']) {
       case 'ready':
+        _applyModels(msg['models'] as List<dynamic>);
         _send({'type': 'config', 'silenceMs': silenceMs});
+        if (msg['model'] != modelId) _send({'type': 'set_model', 'model': modelId});
         final audio = await _mic.start();
         _micSubscription = audio.listen((chunk) => _channel?.sink.add(chunk));
         _setState(SessionState.listening);
@@ -98,6 +150,9 @@ class SessionController extends ChangeNotifier {
         for (final turn in turns.where((t) => t.isUser && t.turnId == turnId)) {
           turn.card = CorrectionCard.fromJson(msg['card'] as Map<String, dynamic>);
         }
+        notifyListeners();
+      case 'model':
+        modelId = msg['model'] as String;
         notifyListeners();
       case 'latency':
         lastLatencyMs = msg['firstTextMs'] as int;
@@ -154,8 +209,9 @@ class SessionController extends ChangeNotifier {
     await _mic.stop();
     await _speaker.interrupt();
     _speakingTurnId = null;
-    await _channel?.sink.close();
+    final channel = _channel;
     _channel = null;
+    await channel?.sink.close();
   }
 
   @override

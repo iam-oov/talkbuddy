@@ -52,3 +52,19 @@ class Turn {
 }
 
 enum SessionState { connecting, listening, thinking, speaking, offline }
+
+class ModelOption {
+  const ModelOption({required this.id, required this.label, required this.provider, required this.available});
+
+  factory ModelOption.fromJson(Map<String, dynamic> json) => ModelOption(
+        id: json['id'] as String,
+        label: json['label'] as String,
+        provider: json['provider'] as String,
+        available: json['available'] as bool,
+      );
+
+  final String id;
+  final String label;
+  final String provider;
+  final bool available;
+}
