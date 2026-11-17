@@ -29,7 +29,7 @@ cd app && flutter run                # terminal 2
 
 | Variable | Default | Meaning |
 |---|---|---|
-| `CLAUDE_MODEL` | `claude-sonnet-5-5` | Model for the reply and the card |
+| `DEEPSEEK_API_KEY` | empty | Optional. Enables `deepseek-v4-pro` in the app's model picker |
 | `PRONUNCIATION` | `on` | `off` skips Azure pronunciation scoring |
 | `PORT` | `8787` | Backend port |
 

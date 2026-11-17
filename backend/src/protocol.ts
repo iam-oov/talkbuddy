@@ -1,4 +1,5 @@
 import { z } from "zod";
+import type { ModelOption } from "./llm/catalog";
 
 /** Silent correction card shown under each learner turn. 80% structure, 20% pronunciation. */
 export const CardSchema = z.object({
@@ -17,11 +18,13 @@ export const ClientMessageSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("send_now") }),
   z.object({ type: z.literal("tts_done"), turnId: z.number() }),
   z.object({ type: z.literal("interrupted"), turnId: z.number(), spokenText: z.string() }),
+  z.object({ type: z.literal("set_model"), model: z.string() }),
 ]);
 export type ClientMessage = z.infer<typeof ClientMessageSchema>;
 
 export type ServerMessage =
-  | { type: "ready" }
+  | { type: "ready"; model: string; models: ModelOption[] }
+  | { type: "model"; model: string }
   | { type: "partial"; text: string }
   | { type: "user_turn"; turnId: number; text: string }
   | { type: "reply_delta"; turnId: number; text: string }

@@ -54,7 +54,7 @@ describe("turn taking", () => {
   it("keeps the turn open when the learner resumes after a thinking pause", async () => {
     const { session, sent, types } = setup();
     session.handleFinal(segment("I think that"));
-    await vi.advanceTimersByTimeAsync(1500);
+    await vi.advanceTimersByTimeAsync(1000);
     session.handlePartial("the problem");
     await vi.advanceTimersByTimeAsync(5000);
     expect(types()).not.toContain("user_turn");

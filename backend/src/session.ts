@@ -1,5 +1,8 @@
+import type { ChatMessage } from "./llm/language-model";
 import { INTERRUPTED_MARK, REFUSAL_LINE } from "./prompts";
 import type { Card, ClientMessage, ServerMessage } from "./protocol";
+
+export type { ChatMessage };
 
 export interface LowWord {
   word: string;
@@ -8,10 +11,6 @@ export interface LowWord {
 export interface SpeechSegment {
   text: string;
   lowWords: LowWord[];
-}
-export interface ChatMessage {
-  role: "user" | "assistant";
-  content: string;
 }
 export interface Tutor {
   reply(
@@ -26,7 +25,7 @@ export interface Coach {
 
 /** How long Azure waits in silence before it closes a phrase. Our turn timer runs on top of it. */
 export const SEGMENT_SILENCE_MS = 800;
-const DEFAULT_SILENCE_MS = 2500;
+const DEFAULT_SILENCE_MS = 2000;
 /** Azure reports the bot's last sentence a moment after the speaker goes quiet; keep filtering until then. */
 export const ECHO_GRACE_MS = SEGMENT_SILENCE_MS + 1200;
 
@@ -84,6 +83,11 @@ export class Session {
   constructor(
     private deps: { send: (msg: ServerMessage) => void; tutor: Tutor; coach: Coach },
   ) {}
+
+  /** Swaps the brain behind tutor and coach; the conversation history carries over. */
+  useAgents(agents: { tutor: Tutor; coach: Coach }): void {
+    this.deps = { ...this.deps, ...agents };
+  }
 
   handlePartial(text: string): void {
     if (!text.trim() || this.closed) return;
