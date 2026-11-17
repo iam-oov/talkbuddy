@@ -20,6 +20,8 @@ class MicStream {
         autoGain: true,
         androidConfig: AndroidRecordConfig(
           audioSource: AndroidAudioSource.voiceCommunication,
+          audioManagerMode: AudioManagerMode.modeInCommunication,
+          speakerphone: true,
         ),
       ),
     );
