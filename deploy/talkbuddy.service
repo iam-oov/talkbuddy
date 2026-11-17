@@ -8,7 +8,7 @@ Type=simple
 User=talkbuddy
 WorkingDirectory=/home/talkbuddy/talkbuddy/backend
 EnvironmentFile=/home/talkbuddy/talkbuddy/backend/.env
-ExecStart=/usr/bin/npm start
+ExecStart=/usr/bin/node --import tsx src/server.ts
 Restart=on-failure
 RestartSec=5
 
